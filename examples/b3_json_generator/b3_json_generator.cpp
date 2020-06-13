@@ -116,9 +116,9 @@ int main(int, char* argv[]) {
   uint16_t last_chunk = 0;
 
   inp_file.open(argv[1], std::ios::in|std::ios::binary);
-  out_file.open("out.txt", std::ios::out);
+  out_file.open(argv[2], std::ios::out);
   int last_msg_seq_num = 0;
-  bool drop_occurred;
+  bool drop_occurred = true;
   int cycle_count = 0;
   while (true) {
     inp_file.read(reinterpret_cast<char *>(&ts_count), 1);
