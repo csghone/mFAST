@@ -9,7 +9,6 @@
 #include <mfast/json/json.h>
 #include <mfast/xml_parser/dynamic_templates_description.h>
 
-//#include "templates_PUMA.h"
 #include "b3_template.h"
 
 using std::string;
@@ -24,24 +23,25 @@ using mfast::message_cref;
 using mfast::ascii_string_cref;
 using mfast::json::encode;
 
+fast_decoder decoder;
+const templates_description* descriptions[] = {b3_template::templates_description::instance()};
+
 int parse_one_packet(const char* fast_message, int msg_len, std::ofstream &out_file, int last_msg_seq) {
-  //const templates_description* descriptions[] = {templates_PUMA::templates_description::instance()};
-  const templates_description* descriptions[] = {b3_template::templates_description::instance()};
-
-  fast_decoder decoder;
-  decoder.include(descriptions);
-
   const char* start = fast_message; // .c_str();
   const char* end = start + msg_len; //fast_message.length();
+  bool is_first = true;
 
   try {
     int loop_count = 0;
-    while (start < end) 
+    while (start < end)
     {
       loop_count += 1;
       //cout << "Loop Index: " << loop_count << endl;
       //cout << "Start: " << int64_t(start-fast_message) << " End:" << int64_t(end-fast_message) << endl;
-      auto msg = decoder.decode(start, end);
+      auto msg = decoder.decode(start, end, is_first);
+      if (is_first) {
+        is_first = false;
+      }
       //cout << "Start: " << int64_t(start-fast_message) << " End:" << int64_t(end-fast_message) << endl;
       //cout << "Template id: " << msg.id() << " Size: " << msg_len << endl;
       int msg_seq_num = last_msg_seq;
@@ -50,7 +50,7 @@ int parse_one_packet(const char* fast_message, int msg_len, std::ofstream &out_f
           auto cref = static_cast<b3_template::MDSecurityList_141_cref>(msg);
           msg_seq_num = cref.get_MsgSeqNum().value();
           break;
-        } 
+        }
         case 153: {
           auto cref = static_cast<b3_template::MDSnapshotFullRefresh_153_cref>(msg);
           msg_seq_num = cref.get_MsgSeqNum().value();
@@ -62,7 +62,7 @@ int parse_one_packet(const char* fast_message, int msg_len, std::ofstream &out_f
           break;
         }
         default: {
-          cout << "msg_id: " << msg.id() << endl;
+          //cout << "msg_id: " << msg.id() << endl;
           assert(false);
           break;
         }
@@ -103,7 +103,7 @@ struct TechnicalMessageHeader {
 };
 #pragma pack()
 
-int main(int, char* argv[]) {
+int main(int argc, char* argv[]) {
   std::ifstream inp_file;
   std::ofstream out_file;
   char buffer[1000000];
@@ -114,12 +114,22 @@ int main(int, char* argv[]) {
   uint64_t ts;
   //char tech_header[10];
   uint16_t last_chunk = 0;
+  int64_t max_cycle_count = -1;
 
   inp_file.open(argv[1], std::ios::in|std::ios::binary);
   out_file.open(argv[2], std::ios::out);
+  if (argc < 4) {
+    max_cycle_count = -1;
+  }
+  else {
+    max_cycle_count = atoi(argv[3]);
+  }
+
+  decoder.include(descriptions);
+
   int last_msg_seq_num = 0;
   bool drop_occurred = true;
-  int cycle_count = 0;
+  int64_t cycle_count = 0;
   while (true) {
     inp_file.read(reinterpret_cast<char *>(&ts_count), 1);
     //cout << ts_count << endl;
@@ -190,7 +200,13 @@ int main(int, char* argv[]) {
       if (inp_file.tellg() < 0) break;
     }
     if (inp_file.tellg() < 0) break;
-    if (!drop_occurred && (cycle_count > 10)) break;
+    if (!drop_occurred) {
+      if (max_cycle_count != -1) {
+        if (cycle_count > max_cycle_count) {
+          break;
+        }
+      }
+    }
   }
 
   out_file.close();
